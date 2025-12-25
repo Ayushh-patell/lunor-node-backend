@@ -20,9 +20,21 @@ router.post("/fetchOrderHistory", async (req, res) => {
     const apiKey = process.env.REMOTE_API_KEY;
     if (!apiKey) return res.status(500).json({ message: "REMOTE_API_KEY env is missing" });
 
-    const agent = new Agent({ connect: { timeout: 30000 } });
+    // ✅ set the alternate domain (no trailing slash needed)
+    const babachickenBackend = "https://babachicken.ca" ;
+    if (!babachickenBackend) {
+      return res.status(500).json({ message: "BABACHICKEN_BACKEND env is missing" });
+    }
 
-    const proxyUrl = `${backend.replace(/\/$/, "")}/db_proxy.php`;
+    const agent = new Agent({ connect: { timeout: 300000 } });
+
+    // ✅ switch domain only for "babachicken"
+    const base =
+      String(userName).toLowerCase() === "babachicken"
+        ? babachickenBackend
+        : backend;
+
+    const proxyUrl = `${base.replace(/\/$/, "")}/db_proxy.php`;
 
     console.log("[fetchOrderHistory] calling:", proxyUrl, { userName, range });
 
@@ -36,11 +48,10 @@ router.post("/fetchOrderHistory", async (req, res) => {
       dispatcher: agent
     });
 
-    // ✅ if there was a redirect, this will show the final URL
     console.log("[fetchOrderHistory] final url:", r.url);
 
     const rawText = await r.text();
-    console.log("[fetchOrderHistory] backend status:", r.status);
+    console.log("[fetchOrderHistory] backend status:", r.status, rawText);
 
     let responseData;
     try {
@@ -53,16 +64,19 @@ router.post("/fetchOrderHistory", async (req, res) => {
       });
     }
 
-    let formattedData = {};
-    formattedData.data = (responseData?.data || []).map((order) => {
-      order.products = (order.products || []).map((item) => {
-        item.product_gross_revenue = parseFloat(
-          item.product_gross_revenue / item.product_qty
-        );
-        return item;
-      });
-      return order;
-    });
+    const formattedData = {
+      data: (responseData?.data || []).map((order) => {
+        order.products = (order.products || []).map((item) => {
+          const qty = Number(item.product_qty) || 0;
+          const gross = Number(item.product_gross_revenue) || 0;
+
+          // avoid division by zero
+          item.product_gross_revenue = qty ? gross / qty : 0;
+          return item;
+        });
+        return order;
+      })
+    };
 
     return res.status(r.status).json(formattedData);
   } catch (error) {
