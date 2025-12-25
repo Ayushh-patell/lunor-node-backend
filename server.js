@@ -1,6 +1,7 @@
 // server.js (mount the route) - only what you need to make it work
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 require("dotenv").config();
 
 const { connectDB } = require("./db");
@@ -20,6 +21,8 @@ async function start() {
   const app = express();
   app.use(cors());
   app.use(express.json());
+   // ✅ serve ./public as-is (e.g. GET /file.png -> ./public/file.png)
+  app.use(express.static(path.join(__dirname, "public")));
 
   app.use("/", addTokenRoute); // POST /addToken
   app.use("/", checkPremiumMockRoute); // POST /check-premium
